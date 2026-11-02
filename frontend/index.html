@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>开票导入模板小工具</title>
+<style>
+:root { --main: #1a73e8; --bg: #f7f9fc; --line: #e3e8ef; --txt: #202124; --muted: #5f6368;}
+* { box-sizing: border-box;}
+body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--txt);}
+header { background: #fff; border-bottom: 1px solid var(--line); padding: 14px 28px; font-size: 18px; font-weight: 600;}
+header small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 10px;}
+main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 60px;}
+.card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin-bottom: 16px;}
+.card h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600;}
+.hint { color: var(--muted); font-size: 13px; line-height: 1.7;}
+#drop { border: 2px dashed #c4ccd6; border-radius: 10px; padding: 38px; text-align: center; color: var(--muted); cursor: pointer; transition:.15s;}
+#drop.over, #drop:hover { border-color: var(--main); color: var(--main); background: #f0f6ff;}
+.btn { background: var(--main); color: #fff; border: 0; border-radius: 8px; padding: 10px 26px; font-size: 15px; cursor: pointer;}
+.btn:disabled { background: #a8c4f0; cursor: default;}
+.btn.ghost { background: #fff; color: var(--main); border: 1px solid var(--main); padding: 6px 14px; font-size: 13px; border-radius: 6px;}
+table { width: 100%; border-collapse: collapse; font-size: 13px;}
+th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left;}
+th { background: #f1f4f9; font-weight: 600; white-space: nowrap;}
+td input, td select { width: 100%; border: 0; outline: none; font-size: 13px; padding: 2px; background: transparent;}
+td input:focus { background: #fff8e1;}
+.st-ok { background: #e8f5e9;}.st-guess { background: #fff3e0;}.st-none { background: #ffebee;}
+.maprow select { font-size: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 6px;}
+#codepop { position: fixed; inset: 0; background: rgba(0,0,0,.25); display: none; align-items: center; justify-content: center; z-index: 50;}
+#codepop.box { background: #fff; border-radius: 10px; width: 520px; max-height: 70vh; overflow: auto; padding: 18px;}
+#codepop input[type=text] { width: 100%; padding: 9px 12px; font-size: 14px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px;}
+.coderow { padding: 9px 10px; border-bottom: 1px solid #f0f0f0; cursor: pointer; font-size: 13px;}
+.coderow:hover { background: #f0f6ff;}
+.coderow b { color: var(--main);}
+.rowbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;}
+.hidden { display: none!important;}
+#status { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 22px; border-radius: 8px; font-size: 14px; display: none; z-index: 99;}
+.legend { font-size: 12px; color: var(--muted); display: flex; gap: 16px; margin-bottom: 10px;}
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px;}
+</style>
+</head>
+<body>
+<header>开票导入模板小工具 <small>单据 → 广东电子税务局导入模板 · 全部在本机处理，不上传</small></header>
+<main>
+<div class="card">
+<h3>1 · 拖入单据</h3>
+<div id="drop">把对账单图片 / PDF / Excel 拖到这里，或点击选择<input type="file" id="file" accept=".jpg,.jpeg,.png,.bmp,.pdf,.xlsx,.xls" class="hidden"></div>
+<div class="hint" style="margin-top:10px">图片识别难免有错字，下一步请对照原图逐项核对，直接点格子修改。</div>
+</div>
+
+<div class="card hidden" id="mapcard">
+<h3>2 · 对应列 <span class="hint">（告诉工具：原表的每一列是什么）</span></h3>
+<div class="rowbar"><button class="btn ghost" id="genbtn">按这个对应生成明细</button></div>
+<div style="overflow:auto"><table id="maptable"></table></div>
+</div>
+
+<div class="card hidden" id="editcard">
+<h3>3 · 核对明细 <span class="hint">（点格子直接改；编码点一下可搜索/去百望查）</span></h3>
+<div class="legend">
+<span><span class="dot" style="background:#a5d6a7"></span>已确认（以前用过，自动记住）</span>
+<span><span class="dot" style="background:#ffcc80"></span>推荐（按名称猜的，请核对）</span>
+<span><span class="dot" style="background:#ef9a9a"></span>未找到（请点格子选编码或百望查）</span>
+</div>
+<div class="rowbar">
+<button class="btn ghost" id="addrow">+ 加一行</button>
+<span class="hint" id="rowcount"></span>
+</div>
+<div style="overflow:auto"><table id="edittable">
+<thead><tr><th>项目名称 *</th><th>税收分类编码</th><th>规格型号</th><th>单位</th><th>数量</th><th>单价</th><th>金额 *</th><th>税率</th><th></th></tr></thead>
+<tbody></tbody>
+</table></div>
+</div>
+
+<div class="card hidden" id="expoccard" style="text-align:center">
+<button class="btn" id="exportbtn" style="font-size:16px;padding:12px 44px">导出税务局导入模板</button>
+<div class="hint" style="margin-top:10px">导出的文件可直接在电子税务局里导入</div>
+</div>
+</main>
+
+<div id="codepop"><div class="box">
+<div style="font-weight:600;margin-bottom:10px" id="poptitle">选择税收分类编码</div>
+<input type="text" id="popq" placeholder="输入名称或编码搜索…">
+<div id="popres"></div>
+<div style="margin-top:12px;text-align:right"><button class="btn ghost" id="bwbtn">百望查（复制名称去百望搜）</button>
+<button class="btn ghost" id="popclose">关闭</button></div>
+</div></div>
+<div id="status"></div>
+
+<script>
+const FIELDS = [["","不用"],["name","项目名称"],["spec","规格型号"],["unit","单位"],["qty","数量"],["price","单价"],["amount","金额"],["rate","税率"]];
+const FCOLS = ["name","code","spec","unit","qty","price","amount","rate"];
+let rawGrid = [], rawHeader = [], srcKind = "";
+let rows = []; // {name,code,spec,unit,qty,price,amount,rate,st}
+let popRow = -1, popName = "";
+const mem = JSON.parse(localStorage.getItem("kp_memory") || "{}");
+const saveMem = () => localStorage.setItem("kp_memory", JSON.stringify(mem));
+
+const $ = s => document.querySelector(s);
+function toast(m, ms=2600){ const e=$("#status"); e.textContent=m; e.style.display="block"; clearTimeout(e._t); e._t=setTimeout(()=>e.style.display="none", ms);}
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+
+// ---------- 文件 ----------
+const drop = $("#drop"), fileI = $("#file");
+drop.onclick = () => fileI.click();
+["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("over");}));
+["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("over");}));
+drop.addEventListener("drop", ev => handleFile(ev.dataTransfer.files[0]));
+fileI.onchange = () => handleFile(fileI.files[0]);
+
+async function handleFile(f){
+if(!f) return;
+toast("正在识别，请稍候…", 10000);
+const fd = new FormData(); fd.append("file", f);
+const ext = f.name.split(".").pop().toLowerCase();
+try{
+if(["jpg","jpeg","png","bmp"].includes(ext)){
+const r = await (await fetch("/api/ocr",{method:"POST",body:fd})).json();
+if(!r.ok) throw r.msg;
+rawGrid = r.grid; srcKind = "grid"; rawHeader = [];
+} else if(["xlsx","xls","pdf"].includes(ext)){
+const r = await (await fetch("/api/parse",{method:"POST",body:fd})).json();
+if(!r.ok) throw r.msg;
+if(r.kind === "image"){ toast("这是扫描版PDF，请先转成图片再拖入"); return;}
+rawHeader = r.header || []; rawGrid = r.rows; srcKind = "table";
+} else { toast("不支持的文件类型"); return;}
+toast("识别完成", 1200);
+showMap();
+}catch(e){ toast("失败："+e);}
+}
+
+// ---------- 对应列 ----------
+function guessField(h){
+h = (h||"").replace(/\s/g,"");
+if(/项目名称|品名|货物|款号|批号/.test(h)) return "name";
+if(/规格/.test(h)) return "spec";
+if(/单位/.test(h)) return "unit";
+if(/数量|件数/.test(h)) return "qty";
+if(/单价/.test(h)) return "price";
+if(/金额|应付|小计/.test(h)) return "amount";
+if(/税率/.test(h)) return "rate";
+return "";
+}
+function showMap(){
+$("#mapcard").classList.remove("hidden");
+const t = $("#maptable"); t.innerHTML = "";
+const maxc = Math.max(...rawGrid.map(r=>r.length), 0);
+const head = srcKind==="table" && rawHeader.length? rawHeader: rawGrid[0] || [];
+const startRow = srcKind==="table" && rawHeader.length? 0: 1;
+let tr = "<tr class='maprow'><td style='background:#f1f4f9;font-weight:600'>对应为</td>";
+window._mapsel = [];
+for(let c=0;c<maxc;c++){
+const g = guessField(head[c]);
+tr += `<td><select data-c="${c}">${FIELDS.map(f=>`<option value="${f[0]}"${f[0]===g?" selected":""}>${f[1]}</option>`).join("")}</select></td>`;
+}
+t.innerHTML = tr + "</tr>";
+const show = rawGrid.slice(startRow, startRow+6);
+show.forEach(r=>{
+let s = "<tr>";
+s += `<td style='background:#f1f4f9;color:#888'>${srcKind==="table"?"数据":""}</td>`;
+for(let c=0;c<maxc;c++) s += `<td>${esc(r[c]||"")}</td>`;
+t.innerHTML += s + "</tr>";
+});
+window._startRow = startRow; window._maxc = maxc;
+$("#mapcard").scrollIntoView({behavior:"smooth"});
+}
+$("#genbtn").onclick = ()=>{
+const map = {};
+document.querySelectorAll("#maptable select").forEach(s=>{ if(s.value) map[s.dataset.c]=s.value;});
+const data = rawGrid.slice(window._startRow);
+rows = data.filter(r=>r.some(x=>(x||"").trim()!=="")).map(r=>{
+const o = {name:"",code:"",spec:"",unit:"",qty:"",price:"",amount:"",rate:"",st:"none"};
+for(const c in map) o[map[c]] = (r[c]||"").trim();
+return o;
+});
+// 编码：记忆 > 猜
+rows.forEach(r=>applyCode(r));
+renderEdit();
+$("#editcard").classList.remove("hidden");
+$("#expoccard").classList.remove("hidden");
+$("#editcard").scrollIntoView({behavior:"smooth"});
+};
+
+// ---------- 编码 ----------
+async function applyCode(r){
+const m = mem[r.name];
+if(r.name && m && m.code){ Object.assign(r,{code:m.code,spec:r.spec||m.spec||"",unit:r.unit||m.unit||"",rate:r.rate||m.rate||"",st:"ok"}); return;}
+if(!r.name) return;
+try{
+const res = await (await fetch("/api/guess",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:r.name})})).json();
+if(res.item){ r.code=res.item.code; r.st="guess";} else r.st="none";
+}catch(e){ r.st="none";}
+renderEdit();
+}
+function renderEdit(){
+const tb = $("#edittable tbody"); tb.innerHTML = "";
+rows.forEach((r,i)=>{
+const tr = document.createElement("tr");
+const cls = r.st==="ok"?"st-ok":r.st==="guess"?"st-guess":"st-none";
+tr.innerHTML = `
+<td><input data-i="${i}" data-f="name" value="${esc(r.name)}"></td>
+<td class="${cls}"><input data-i="${i}" data-f="code" value="${esc(r.code)}" readonly placeholder="点我选" style="cursor:pointer"></td>
+<td><input data-i="${i}" data-f="spec" value="${esc(r.spec)}"></td>
+<td><input data-i="${i}" data-f="unit" value="${esc(r.unit)}"></td>
+<td><input data-i="${i}" data-f="qty" value="${esc(r.qty)}"></td>
+<td><input data-i="${i}" data-f="price" value="${esc(r.price)}"></td>
+<td><input data-i="${i}" data-f="amount" value="${esc(r.amount)}"></td>
+<td><input data-i="${i}" data-f="rate" value="${esc(r.rate)}"></td>
+<td><button class="btn ghost" data-del="${i}">删</button></td>`;
+tb.appendChild(tr);
+});
+tb.querySelectorAll("input").forEach(inp=>{
+if(inp.dataset.f==="code"){ inp.onclick=()=>openPop(+inp.dataset.i); return;}
+inp.onchange=()=>{ const r=rows[+inp.dataset.i]; r[inp.dataset.f]=inp.value.trim();
+if(inp.dataset.f==="name"){ r.code=""; r.st="none"; applyCode(r);}};
+});
+tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ rows.splice(+b.dataset.del,1); renderEdit();});
+$("#rowcount").textContent = `共 ${rows.length} 行`;
+}
+$("#addrow").onclick = ()=>{ rows.push({name:"",code:"",spec:"",unit:"",qty:"",price:"",amount:"",rate:"",st:"none"}); renderEdit();};
+
+// 编码弹窗
+function openPop(i){
+popRow=i; popName=rows[i].name;
+$("#poptitle").textContent = `选择编码（${popName||"未命名"}）`;
+$("#popq").value = popName; $("#codepop").style.display="flex";
+doSearch(popName);
+$("#popq").focus();
+}
+async function doSearch(q){
+const box=$("#popres"); box.innerHTML="<div class='hint'>搜索中…</div>";
+const r = await (await fetch("/api/codes?q="+encodeURIComponent(q))).json();
+box.innerHTML = r.items.length? "": "<div class='hint'>没找到，试试换关键词，或点「百望查」</div>";
+r.items.forEach(c=>{
+const d=document.createElement("div"); d.className="coderow";
+d.innerHTML=`<b>${esc(c.code)}</b> ${esc(c.name)} <span class="hint">${esc(c.cat||"")}</span>`;
+d.onclick=()=>{ const row=rows[popRow]; row.code=c.code; row.st="ok";
+mem[row.name]={code:c.code,spec:row.spec,unit:row.unit,rate:row.rate}; saveMem();
+$("#codepop").style.display="none"; renderEdit();};
+box.appendChild(d);
+});
+}
+let _qt=null;
+$("#popq").oninput=e=>{ clearTimeout(_qt); _qt=setTimeout(()=>doSearch(e.target.value),300);};
+$("#popclose").onclick=()=>$("#codepop").style.display="none";
+$("#codepop").addEventListener("click",e=>{ if(e.target.id==="codepop") $("#codepop").style.display="none";});
+$("#bwbtn").onclick=async()=>{
+try{ await navigator.clipboard.writeText(popName);}catch(e){}
+toast("已复制品名，去百望页面粘贴查询");
+window.open("https://znfm.baiwang.com/","_blank");
+};
+
+// ---------- 导出 ----------
+$("#exportbtn").onclick=async()=>{
+const un = rows.filter(r=>r.st!=="ok").length;
+if(un &&!confirm(`还有 ${un} 行编码没确认（橙色/红色），继续导出吗？`)) return;
+toast("正在生成…", 10000);
+const r = await fetch("/api/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rows})});
+if(!r.ok){ const j=await r.json(); toast(j.msg||"导出失败",4000); return;}
+const blob = await r.blob();
+const a = document.createElement("a");
+a.href = URL.createObjectURL(blob); a.download = "发票开具项目信息导入模板.xlsx"; a.click();
+toast("已导出",1500);
+};
+</script>
+</body>
+</html>
