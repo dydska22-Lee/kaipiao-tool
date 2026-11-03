@@ -2,8 +2,10 @@
 """PyInstaller 打包配置：在 GitHub Actions 的 Windows 环境里运行，产出单文件 exe。"""
 from PyInstaller.utils.hooks import collect_data_files
 
-# RapidOCR 的 onnx 模型在 pip 包内，显式收集
-rapidocr_data = collect_data_files("rapidocr_onnxruntime", includes=["models/*.onnx"])
+# RapidOCR 的 onnx 模型和 config.yaml 在 pip 包内，显式收集（缺 config.yaml 会导致初始化失败）
+rapidocr_data = collect_data_files(
+    "rapidocr_onnxruntime", includes=["models/*.onnx", "config.yaml"]
+)
 
 a = Analysis(
     ["main.py"],

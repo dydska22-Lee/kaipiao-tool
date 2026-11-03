@@ -15,6 +15,14 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
 
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """所有未捕获异常都返回 JSON，前端不再看到 HTML 解析错误。"""
+    from werkzeug.exceptions import HTTPException
+    code = e.code if isinstance(e, HTTPException) else 500
+    return jsonify({"ok": False, "msg": f"出错了：{e}"}), code
+
+
 @app.route("/")
 def index():
     return send_from_directory(FRONTEND_DIR, "index.html")
