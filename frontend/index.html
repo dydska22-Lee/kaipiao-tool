@@ -49,7 +49,7 @@ td input:focus { background: #fff8e1;}
 </div>
 
 <div class="card hidden" id="mapcard">
-<h3>2 · 对应列 <span class="hint">（告诉工具：原表的每一列是什么）</span></h3>
+<h3>2 · 预览 + 对应列 <span class="hint">（预览可直接改、删行；再告诉工具每一列是什么）</span></h3>
 <div class="rowbar"><button class="btn ghost" id="genbtn">按这个对应生成明细</button></div>
 <div style="overflow:auto"><table id="maptable"></table></div>
 </div>
@@ -63,10 +63,11 @@ td input:focus { background: #fff8e1;}
 </div>
 <div class="rowbar">
 <button class="btn ghost" id="addrow">+ 加一行</button>
+<button class="btn ghost" id="delsel">删除选中行</button>
 <span class="hint" id="rowcount"></span>
 </div>
 <div style="overflow:auto"><table id="edittable">
-<thead><tr><th>项目名称 *</th><th>税收分类编码</th><th>规格型号</th><th>单位</th><th>数量</th><th>单价</th><th>金额 *</th><th>税率</th><th></th></tr></thead>
+<thead><tr><th><input type="checkbox" id="selall" title="全选"></th><th>项目名称 *</th><th>税收分类编码</th><th>规格型号</th><th>单位</th><th>数量</th><th>单价</th><th>金额 *</th><th>税率</th><th></th></tr></thead>
 <tbody></tbody>
 </table></div>
 </div>
@@ -142,31 +143,46 @@ return "";
 }
 function showMap(){
 $("#mapcard").classList.remove("hidden");
-const t = $("#maptable"); t.innerHTML = "";
 const maxc = Math.max(...rawGrid.map(r=>r.length), 0);
 const head = srcKind==="table" && rawHeader.length? rawHeader: rawGrid[0] || [];
 const startRow = srcKind==="table" && rawHeader.length? 0: 1;
-let tr = "<tr class='maprow'><td style='background:#f1f4f9;font-weight:600'>对应为</td>";
-window._mapsel = [];
+// 可编辑的工作副本：预览里改、删都作用在这份上
+window._workGrid = rawGrid.slice(startRow).map(r=>{
+const row=[]; for(let c=0;c<maxc;c++) row.push((r[c]||"").trim()); return row;
+});
+window._head = head; window._maxc = maxc;
+renderPreview();
+$("#mapcard").scrollIntoView({behavior:"smooth"});
+}
+function renderPreview(){
+const t = $("#maptable"), maxc = window._maxc, head = window._head;
+let html = "<thead><tr class='maprow'><td style='background:#f1f4f9;font-weight:600;white-space:nowrap'>对应为</td>";
 for(let c=0;c<maxc;c++){
 const g = guessField(head[c]);
-tr += `<td><select data-c="${c}">${FIELDS.map(f=>`<option value="${f[0]}"${f[0]===g?" selected":""}>${f[1]}</option>`).join("")}</select></td>`;
+html += `<td><select data-c="${c}">${FIELDS.map(f=>`<option value="${f[0]}"${f[0]===g?" selected":""}>${f[1]}</option>`).join("")}</select></td>`;
 }
-t.innerHTML = tr + "</tr>";
-const show = rawGrid.slice(startRow, startRow+6);
-show.forEach(r=>{
-let s = "<tr>";
-s += `<td style='background:#f1f4f9;color:#888'>${srcKind==="table"?"数据":""}</td>`;
-for(let c=0;c<maxc;c++) s += `<td>${esc(r[c]||"")}</td>`;
-t.innerHTML += s + "</tr>";
+html += "<td style='background:#f1f4f9;white-space:nowrap'><button class='btn ghost' id='delEmpty'>删空行</button></td></tr></thead><tbody>";
+window._workGrid.forEach((r,i)=>{
+html += `<tr><td style='background:#f1f4f9;color:#888'>${i+1}</td>`;
+for(let c=0;c<maxc;c++) html += `<td><input data-r="${i}" data-c="${c}" value="${esc(r[c])}"></td>`;
+html += `<td><button class="btn ghost" data-prowdel="${i}">删</button></td></tr>`;
 });
-window._startRow = startRow; window._maxc = maxc;
-$("#mapcard").scrollIntoView({behavior:"smooth"});
+t.innerHTML = html + "</tbody>";
+t.querySelectorAll("input[data-r]").forEach(inp=>{
+inp.onchange=()=>{ window._workGrid[+inp.dataset.r][+inp.dataset.c]=inp.value.trim(); };
+});
+t.querySelectorAll("[data-prowdel]").forEach(b=>b.onclick=()=>{
+window._workGrid.splice(+b.dataset.prowdel,1); renderPreview();
+});
+$("#delEmpty").onclick=()=>{
+window._workGrid = window._workGrid.filter(r=>r.some(x=>(x||"").trim()!==""));
+renderPreview(); toast("已删除空行");
+};
 }
 $("#genbtn").onclick = ()=>{
 const map = {};
 document.querySelectorAll("#maptable select").forEach(s=>{ if(s.value) map[s.dataset.c]=s.value;});
-const data = rawGrid.slice(window._startRow);
+const data = window._workGrid || [];
 rows = data.filter(r=>r.some(x=>(x||"").trim()!=="")).map(r=>{
 const o = {name:"",code:"",spec:"",unit:"",qty:"",price:"",amount:"",rate:"",st:"none"};
 for(const c in map) o[map[c]] = (r[c]||"").trim();
@@ -197,6 +213,7 @@ rows.forEach((r,i)=>{
 const tr = document.createElement("tr");
 const cls = r.st==="ok"?"st-ok":r.st==="guess"?"st-guess":"st-none";
 tr.innerHTML = `
+<td><input type="checkbox" data-sel="${i}"></td>
 <td><input data-i="${i}" data-f="name" value="${esc(r.name)}"></td>
 <td class="${cls}"><input data-i="${i}" data-f="code" value="${esc(r.code)}" readonly placeholder="点我选" style="cursor:pointer"></td>
 <td><input data-i="${i}" data-f="spec" value="${esc(r.spec)}"></td>
@@ -217,6 +234,17 @@ tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ rows.splice(+b.data
 $("#rowcount").textContent = `共 ${rows.length} 行`;
 }
 $("#addrow").onclick = ()=>{ rows.push({name:"",code:"",spec:"",unit:"",qty:"",price:"",amount:"",rate:"",st:"none"}); renderEdit();};
+$("#selall").onchange = e=>{
+document.querySelectorAll("#edittable [data-sel]").forEach(c=>c.checked=e.target.checked);
+};
+$("#delsel").onclick = ()=>{
+const sel = new Set();
+document.querySelectorAll("#edittable [data-sel]:checked").forEach(c=>sel.add(+c.dataset.sel));
+if(!sel.size){ toast("请先勾选要删除的行"); return;}
+rows = rows.filter((_,i)=>!sel.has(i));
+$("#selall").checked = false;
+renderEdit(); toast(`已删除 ${sel.size} 行`);
+};
 
 // 编码弹窗
 function openPop(i){
