@@ -2,9 +2,10 @@
 """PyInstaller 打包配置：在 GitHub Actions 的 Windows 环境里运行，产出单文件 exe。"""
 from PyInstaller.utils.hooks import collect_data_files
 
-# RapidOCR 的 onnx 模型和 config.yaml 在 pip 包内，显式收集（缺 config.yaml 会导致初始化失败）
+# rapidocr 3.x 的 onnx 模型和 config.yaml 在 pip 包内，显式收集（缺 config.yaml 会导致初始化失败）
+# 注意：rapidocr 3.10 起默认自带 PP-OCRv6 small 模型（models/PP-OCRv6_*_small.onnx），离线可用
 rapidocr_data = collect_data_files(
-    "rapidocr_onnxruntime", includes=["models/*.onnx", "config.yaml"]
+    "rapidocr", includes=["models/*.onnx", "config.yaml"]
 )
 
 a = Analysis(
@@ -18,7 +19,7 @@ a = Analysis(
     ]
     + rapidocr_data,
     hiddenimports=[
-        "rapidocr_onnxruntime",
+        "rapidocr",
         "onnxruntime",
         "flask",
         "werkzeug",
